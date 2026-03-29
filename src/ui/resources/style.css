@@ -1,0 +1,124 @@
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+
+.search-bar {
+    padding: 8px 12px;
+    /* Adwaita draws a separator under the header bar automatically via
+       ToolbarView. We add a bottom border to visually anchor the search area. */
+    border-bottom: 1px solid alpha(@borders, 0.5);
+}
+
+.search-icon {
+    color: alpha(@window_fg_color, 0.5);
+}
+
+.search-entry {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 6px;
+    min-height: 0;
+}
+
+.search-entry:focus {
+    box-shadow: none;
+}
+
+/* ── Scrolled list padding ───────────────────────────────────────────────── */
+
+.list-scroll {
+    /* Give the boxed-list breathing room from the window edges */
+    padding: 0;
+}
+
+/* Adwaita's boxed-list needs margin so its rounded corners don't touch edges */
+.clipboard-list.boxed-list {
+    margin: 12px;
+}
+
+/* ── Entry rows ──────────────────────────────────────────────────────────── */
+
+.entry-root {
+    padding: 10px 12px;
+    min-height: 52px;
+}
+
+.entry-thumb {
+    min-width: 36px;
+    color: alpha(@window_fg_color, 0.45);
+}
+
+.entry-thumb-image {
+    border-radius: 4px;
+    border: 1px solid alpha(@window_fg_color, 0.10);
+}
+
+/* ── Meta row (badge + timestamp) ───────────────────────────────────────── */
+
+.entry-meta {
+    margin-bottom: 2px;
+}
+
+.entry-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/*TODO maybe change colors?*/
+.entry-badge-text   { background-color: alpha(@blue_3,   0.20); color: @blue_5;   }
+.entry-badge-image  { background-color: alpha(@green_3,  0.20); color: @green_5;  }
+.entry-badge-file   { background-color: alpha(@orange_3, 0.20); color: @orange_5; }
+.entry-badge-link   { background-color: alpha(@purple_3, 0.20); color: @purple_5; }
+
+.entry-timestamp {
+    font-size: 11px;
+    color: alpha(@window_fg_color, 0.40);
+}
+
+.entry-pin-indicator {
+    font-size: 11px;
+    color: @yellow_5;
+}
+
+.entry-preview {
+    font-size: 13px;
+    color: alpha(@window_fg_color, 0.80);
+    line-height: 1.45;
+}
+
+/* ── Action buttons (visible on hover/focus) ─────────────────────────────── */
+
+.entry-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.entry-root:hover     .entry-actions,
+row:focus-within      .entry-actions {
+    opacity: 1;
+}
+
+.entry-actions button {
+    padding: 4px 6px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.entry-btn-pinned {
+    color: @yellow_5;
+}
+
+.entry-btn-delete:hover {
+    color: @error_color;
+    background-color: alpha(@error_color, 0.12);
+}
+
+.entry-btn-paste {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    min-height: 0;
+}

@@ -1,0 +1,7 @@
+{
+  "uuid": "clippy@example.com",
+  "name": "Clippy Clipboard Watcher",
+  "description": "Monitors clipboard changes and forwards them to the Clippy app over D-Bus.",
+  "shell-version": ["46", "47", "48", "49"],
+  "version": 1
+}
