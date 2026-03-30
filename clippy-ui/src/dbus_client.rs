@@ -6,6 +6,7 @@ use zbus::proxy;
 )]
 pub trait ClippyDaemon {
     fn new_entry(&self, text: String) -> zbus::Result<()>;
+    fn new_file(&self, uris_str: String) -> zbus::Result<()>;
     fn get_history(&self) -> zbus::Result<Vec<String>>;
     fn get_image_bytes(&self, id: i64) -> zbus::Result<Vec<u8>>;
     fn delete(&self, id: i64) -> zbus::Result<()>;
@@ -32,6 +33,9 @@ impl DbusClient {
     }
     pub fn new_entry(&self, text: String) -> zbus::Result<()> {
         self.rt.block_on(async { self.proxy.new_entry(text).await })
+    }
+    pub fn new_file(&self, uris_str: String) -> zbus::Result<()> {
+        self.rt.block_on(async { self.proxy.new_file(uris_str).await })
     }
     pub fn get_history(&self) -> zbus::Result<Vec<String>> {
         self.rt.block_on(async { self.proxy.get_history().await })

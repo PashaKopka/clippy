@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EntryKind {
     Text(String),
@@ -32,7 +33,17 @@ impl ClipboardEntry {
             EntryKind::Image { width, height, .. } => {
                 format!("Image {}x{}", width, height)
             }
-            EntryKind::FilePath(p) => p.clone(),
+            EntryKind::FilePath(p) => {
+                p.lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| {
+                        let l = l.trim_end_matches('\r');
+                        let decoded = percent_encoding::percent_decode_str(l).decode_utf8().unwrap_or(std::borrow::Cow::Borrowed(l));
+                        decoded.split('/').last().unwrap_or(&decoded).to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
             EntryKind::Link(u) => u.clone(),
         }
     }

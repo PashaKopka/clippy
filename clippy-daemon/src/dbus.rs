@@ -71,6 +71,33 @@ impl ClippyDaemon {
         let _ = Self::history_changed(&ctxt).await;
     }
 
+    async fn new_file(&self, uris: String) {
+        if uris.trim().is_empty() {
+            return;
+        }
+        let conn = self.conn.lock().unwrap();
+        if let Ok(entries) = clippy_db::load_all(&conn) {
+            if let Some(first) = entries.first() {
+                if let EntryKind::FilePath(ref p) = first.kind {
+                    if *p == uris {
+                        return; // duplicate
+                    }
+                }
+            }
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let entry = ClipboardEntry {
+            id: 0,
+            kind: EntryKind::FilePath(uris),
+            timestamp: now,
+            pinned: false,
+        };
+        let _ = clippy_db::insert(&conn, &entry);
+    }
+
     async fn get_history(&self) -> Vec<String> {
         let conn = self.conn.lock().unwrap();
         if let Ok(entries) = clippy_db::load_all(&conn) {

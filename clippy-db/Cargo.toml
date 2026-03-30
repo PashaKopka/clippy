@@ -6,3 +6,5 @@ edition = "2024"
 rusqlite.workspace = true
 directories.workspace = true
 serde.workspace = true
+url.workspace = true
+percent-encoding = "2.3.2"

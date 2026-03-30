@@ -1,4 +1,4 @@
-use clippy_db::ClipboardEntry;
+use clippy_db::{ClipboardEntry, EntryKind};
 use gtk4::prelude::*;
 use gtk4::{Align, Box as GBox, Button, Image, Label, ListBoxRow, Orientation, Widget};
 use std::sync::mpsc::Sender;
@@ -8,6 +8,8 @@ pub enum EntryAction {
     Paste(i64),
     TogglePin(i64),
     Delete(i64),
+    OpenInBrowser(i64),
+    OpenInFiles(i64),
 }
 
 pub fn build_entry_row(
@@ -81,10 +83,7 @@ pub fn build_entry_row(
     row
 }
 
-fn build_thumbnail(
-    entry: &ClipboardEntry,
-    dbus: std::rc::Rc<std::cell::RefCell<crate::dbus_client::DbusClient>>,
-) -> Widget {
+fn build_thumbnail(entry: &ClipboardEntry, dbus: std::rc::Rc<std::cell::RefCell<crate::dbus_client::DbusClient>>) -> Widget {
     match &entry.kind {
         clippy_db::EntryKind::Image { .. } => {
             let img = Image::new();
@@ -94,7 +93,7 @@ fn build_thumbnail(
             let (tx, rx) = async_channel::bounded(1);
             dbus.borrow().request_image_bytes_async(entry.id, tx);
 
-            glib::spawn_future_local(async move {
+            gtk4::glib::spawn_future_local(async move {
                 if let Ok(bytes) = rx.recv().await {
                     if let Some(img_widget) = img_weak.upgrade() {
                         let loader = gdk_pixbuf::PixbufLoader::new();
@@ -111,11 +110,7 @@ fn build_thumbnail(
                                         let ratio = max_size as f64 / h as f64;
                                         ((w as f64 * ratio) as i32, max_size)
                                     };
-                                    if let Some(scaled) = pixbuf.scale_simple(
-                                        new_w,
-                                        new_h,
-                                        gdk_pixbuf::InterpType::Bilinear,
-                                    ) {
+                                    if let Some(scaled) = pixbuf.scale_simple(new_w, new_h, gdk_pixbuf::InterpType::Bilinear) {
                                         let tex = gtk4::gdk::Texture::for_pixbuf(&scaled);
                                         img_widget.set_paintable(Some(&tex));
                                     } else {
@@ -177,6 +172,32 @@ fn build_action_buttons(entry: &ClipboardEntry, action_tx: Sender<EntryAction>) 
         });
     }
     bx.append(&btn_del);
+
+    match &entry.kind {
+        EntryKind::Link(_u) => {
+            let btn_open_in_browser = icon_button("web-browser-symbolic", "Open");
+            btn_open_in_browser.add_css_class("flat");
+            {
+                let tx = action_tx.clone();
+                btn_open_in_browser.connect_clicked(move |_| {
+                    let _ = tx.send(EntryAction::OpenInBrowser(id));
+                });
+            }
+            bx.append(&btn_open_in_browser);
+        },
+        EntryKind::FilePath(_path) => {
+            let btn_open_in_files = icon_button("folder-symbolic", "Open");
+            btn_open_in_files.add_css_class("flat");
+            {
+                let tx = action_tx.clone();
+                btn_open_in_files.connect_clicked(move |_| {
+                    let _ = tx.send(EntryAction::OpenInFiles(id));
+                });
+            }
+            bx.append(&btn_open_in_files);
+        },
+        _ => {}
+    }
 
     bx.upcast()
 }

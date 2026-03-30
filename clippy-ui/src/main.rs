@@ -176,6 +176,48 @@ fn on_action(
         EntryAction::Delete(id) => {
             let _ = dbus.borrow().delete(id);
         }
+        EntryAction::OpenInBrowser(id) => {
+            if let Some(entry) = get_entry(id, history) {
+                if let EntryKind::Link(url) = entry.kind {
+                    let _ = gio::AppInfo::launch_default_for_uri(&url, gio::AppLaunchContext::NONE);
+                    window.set_visible(false);
+                }
+            }
+        }
+        EntryAction::OpenInFiles(id) => {
+            if let Some(entry) = get_entry(id, history) {
+                if let EntryKind::FilePath(paths) = entry.kind {
+                    let uris: Vec<String> = paths.lines()
+                        .map(|l| l.trim_end_matches('\r').to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+
+                    if !uris.is_empty() {
+                        // Use std::process::Command to invoke dbus-send for FileManager1
+                        let mut args = vec![
+                            "--session".to_string(),
+                            "--dest=org.freedesktop.FileManager1".to_string(),
+                            "--type=method_call".to_string(),
+                            "/org/freedesktop/FileManager1".to_string(),
+                            "org.freedesktop.FileManager1.ShowItems".to_string(),
+                        ];
+
+                        // Build array of strings for dbus, using only the first file
+                        let array_arg = format!(
+                            "array:string:{}",
+                            uris[0]
+                        );
+                        args.push(array_arg);
+                        args.push("string:".to_string()); // StartupId
+
+                        let _ = std::process::Command::new("dbus-send")
+                            .args(args)
+                            .spawn();
+                    }
+                    window.set_visible(false);
+                }
+            }
+        }
     }
 }
 
@@ -189,7 +231,26 @@ fn set_clipboard(
         match entry.kind {
             EntryKind::Text(t) => display.clipboard().set_text(&t),
             EntryKind::Link(t) => display.clipboard().set_text(&t),
-            EntryKind::FilePath(t) => display.clipboard().set_text(&t),
+            EntryKind::FilePath(t) => {
+                let clipboard = display.clipboard();
+
+                let provider = gdk::ContentProvider::new_union(&[
+                    gdk::ContentProvider::for_bytes(
+                        "text/uri-list",
+                        &glib::Bytes::from(t.as_bytes()),
+                    ),
+                    gdk::ContentProvider::for_bytes(
+                        "x-special/gnome-copied-files",
+                        &glib::Bytes::from(format!("copy\n{}", t).as_bytes()),
+                    ),
+                    gdk::ContentProvider::for_bytes(
+                        "text/plain",
+                        &glib::Bytes::from(t.as_bytes()),
+                    ),
+                ]);
+
+                clipboard.set_content(Some(&provider)).unwrap();
+            },
             EntryKind::Image { .. } => {
                 let bytes = dbus.borrow().get_image_bytes(id).unwrap_or_default();
                 if bytes.is_empty() {

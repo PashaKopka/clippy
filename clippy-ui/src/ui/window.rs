@@ -76,6 +76,18 @@ impl ClipboardWindow {
         let p_links = stack.add_titled_with_icon(&page_links, Some("links"), "Links", "view-list-symbolic");
         p_links.set_icon_name(Some("network-wireless-hotspot-symbolic"));
 
+        // Files tab
+        let files_history: Vec<ClipboardEntry> = history
+            .borrow()
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::FilePath { .. }))
+            .cloned()
+            .collect();
+        let page_files =
+            Self::build_list_page(&files_history, false, action_tx.clone(), dbus.clone());
+        let p_files = stack.add_titled_with_icon(&page_files, Some("files"), "Files", "folder-symbolic");
+        p_files.set_icon_name(Some("network-wireless-hotspot-symbolic"));
+
         // Pinned tab
         let page_pinned =
             Self::build_list_page(&history.borrow(), true, action_tx.clone(), dbus.clone());
@@ -137,11 +149,18 @@ impl ClipboardWindow {
             .cloned()
             .collect();
 
+        let files_entries = entries
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::FilePath { .. }))
+            .cloned()
+            .collect();
+
         let tabs = vec![
             ("all", entries.clone(), false),
             ("text", text_entries, false),
             ("images", image_entries, false),
-            ("links", link_entries, false),  // using generic string name mapping for now
+            ("links", link_entries, false),
+            ("files", files_entries, false),
             ("pinned", entries.clone(), true),
         ];
 
