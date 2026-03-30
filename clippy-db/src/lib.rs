@@ -126,6 +126,16 @@ pub fn delete(conn: &Connection, id: i64) -> SqlResult<()> {
     conn.execute("DELETE FROM clipboard_entries WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+pub fn is_text_exists(conn: &Connection, text: &str) -> SqlResult<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM clipboard_entries WHERE kind = 'text' AND CAST(content AS TEXT) = ?1",
+        params![text],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 /// Remove all non-pinned entries older than `older_than_secs` Unix timestamp.
 pub fn prune_old(conn: &Connection, older_than_secs: i64) -> SqlResult<usize> {
     let deleted = conn.execute(
@@ -136,7 +146,9 @@ pub fn prune_old(conn: &Connection, older_than_secs: i64) -> SqlResult<usize> {
 }
 
 pub fn get_image_bytes(conn: &Connection, id: i64) -> SqlResult<Option<Vec<u8>>> {
-    let mut stmt = conn.prepare("SELECT content, image_path FROM clipboard_entries WHERE id = ?1 AND kind = 'image'")?;
+    let mut stmt = conn.prepare(
+        "SELECT content, image_path FROM clipboard_entries WHERE id = ?1 AND kind = 'image'",
+    )?;
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
         let content: Vec<u8> = row.get(0)?;
@@ -155,7 +167,6 @@ pub fn get_image_bytes(conn: &Connection, id: i64) -> SqlResult<Option<Vec<u8>>>
     }
 }
 
-/// Load all entries, newest first.
 pub fn load_all(conn: &Connection) -> SqlResult<Vec<ClipboardEntry>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, content, mime_type, image_path, created_at, pinned
@@ -184,7 +195,7 @@ pub fn load_pinned(conn: &Connection) -> SqlResult<Vec<ClipboardEntry>> {
         .collect();
     Ok(entries)
 }
-/// Full-text search across text/link/file entries.  // TODO remove?
+
 pub fn search(conn: &Connection, query: &str) -> SqlResult<Vec<ClipboardEntry>> {
     let pattern = format!("%{}%", query);
     let mut stmt = conn.prepare(
@@ -201,6 +212,7 @@ pub fn search(conn: &Connection, query: &str) -> SqlResult<Vec<ClipboardEntry>> 
         .collect();
     Ok(entries)
 }
+
 /// Convert a `ClipboardEntry` to the 4 columns we write: (kind, content, mime_type, image_path).
 /// For large images, saves the file to disk and returns the path.
 fn entry_to_row(entry: &ClipboardEntry) -> (String, Vec<u8>, Option<String>, Option<String>) {
@@ -249,6 +261,7 @@ fn entry_to_row(entry: &ClipboardEntry) -> (String, Vec<u8>, Option<String>, Opt
         }
     }
 }
+
 /// Convert a DB row back to a `ClipboardEntry`. Returns None on unrecognised kind.
 fn row_to_entry(row: &rusqlite::Row<'_>) -> SqlResult<Option<ClipboardEntry>> {
     let id: i64 = row.get(0)?;
@@ -301,6 +314,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> SqlResult<Option<ClipboardEntry>> {
         pinned: pinned != 0,
     }))
 }
+
 /// Read width/height from a PNG header without decoding the whole image.
 /// Returns (0, 0) if the bytes are not a valid PNG.
 pub fn png_dimensions(bytes: &[u8]) -> (i32, i32) {

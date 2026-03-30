@@ -1,4 +1,4 @@
-use clippy_db::{ClipboardEntry, EntryKind, png_dimensions};
+use clippy_db::{png_dimensions, ClipboardEntry, EntryKind};
 use std::sync::{Arc, Mutex};
 use zbus::interface;
 pub struct ClippyDaemon {
@@ -15,15 +15,11 @@ impl ClippyDaemon {
         }
         {
             let conn = self.conn.lock().unwrap();
-            if let Ok(entries) = clippy_db::load_all(&conn) {
-                if let Some(first) = entries.first() {
-                    if let EntryKind::Text(ref t) = first.kind {
-                        if *t == text {
-                            return; // duplicate
-                        }
-                    }
-                }
+            // Check if entry already exists in database
+            if clippy_db::is_text_exists(&conn, &text).expect("Could not read from database") {
+                return;
             }
+
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -39,7 +35,11 @@ impl ClippyDaemon {
         let _ = Self::history_changed(&ctxt).await;
     }
 
-    async fn new_image(&self, image: Vec<u8>, #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>) {
+    async fn new_image(
+        &self,
+        image: Vec<u8>,
+        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+    ) {
         if image.is_empty() {
             return;
         }
@@ -93,7 +93,12 @@ impl ClippyDaemon {
         let _ = Self::history_changed(&ctxt).await;
     }
 
-    async fn set_pinned(&self, id: i64, pinned: bool, #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>) {
+    async fn set_pinned(
+        &self,
+        id: i64,
+        pinned: bool,
+        #[zbus(signal_context)] ctxt: zbus::SignalContext<'_>,
+    ) {
         {
             let conn = self.conn.lock().unwrap();
             let _ = clippy_db::set_pinned(&conn, id, pinned);
