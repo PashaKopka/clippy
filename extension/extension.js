@@ -45,7 +45,7 @@ export default class ClippyWatcher extends Extension {
             Gio.DBus.session.call(
                 'com.example.clippy',       // bus name your Rust app registers
                 '/com/example/clippy',      // object path
-                'com.example.clippy',       // interface name
+                'com.example.clippy.Daemon',// interface name
                 'NewEntry',                 // method name
                 new GLib.Variant('(s)', [text]),
                 null,                       // no expected reply type

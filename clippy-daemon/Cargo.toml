@@ -1,0 +1,13 @@
+[package]
+name = "clippy-daemon"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+clippy-db = { path = "../clippy-db" }
+zbus.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
+anyhow = "1.0.102"
+rusqlite.workspace = true

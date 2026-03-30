@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
     <gresource prefix="/com/example/clippy">
-        <file compressed="true">style.css</file>
+        <file compressed="true" alias="style.css">src/ui/resources/style.css</file>
     </gresource>
 </gresources>
