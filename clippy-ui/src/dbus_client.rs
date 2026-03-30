@@ -9,11 +9,14 @@ pub trait ClippyDaemon {
     fn get_history(&self) -> zbus::Result<Vec<String>>;
     fn delete(&self, id: i64) -> zbus::Result<()>;
     fn set_pinned(&self, id: i64, pinned: bool) -> zbus::Result<()>;
+    fn toggle_pin(&self, id: i64) -> zbus::Result<()>;
 }
+
 pub struct DbusClient {
     proxy: ClippyDaemonProxy<'static>,
     rt: tokio::runtime::Runtime,
 }
+
 impl DbusClient {
     pub fn new() -> zbus::Result<Self> {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -33,6 +36,11 @@ impl DbusClient {
         self.rt.block_on(async { self.proxy.delete(id).await })
     }
     pub fn set_pinned(&self, id: i64, pinned: bool) -> zbus::Result<()> {
-        self.rt.block_on(async { self.proxy.set_pinned(id, pinned).await })
+        self.rt
+            .block_on(async { self.proxy.set_pinned(id, pinned).await })
+    }
+    
+    pub fn toggle_pin(&self, id: i64) -> zbus::Result<()> {
+        self.rt.block_on(async { self.proxy.toggle_pin(id).await })
     }
 }

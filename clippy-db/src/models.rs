@@ -10,7 +10,7 @@ pub enum EntryKind {
     FilePath(String),
     Link(String),
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ClipboardEntry {
     pub id: i64,
     pub kind: EntryKind,

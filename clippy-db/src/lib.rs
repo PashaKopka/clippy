@@ -1,34 +1,44 @@
 pub mod models;
-pub use models::*;
 use directories::ProjectDirs;
+pub use models::*;
 use rusqlite::{params, Connection, Result as SqlResult};
 use std::path::PathBuf;
+
 // Images larger than this are stored on disk instead of in the DB blob.
 const IMAGE_INLINE_LIMIT_BYTES: usize = 1024 * 1024; // 1 MB
+
 pub fn data_dir() -> PathBuf {
     ProjectDirs::from("com", "example", "clippy")
         .expect("Could not determine data directory")
         .data_dir()
         .to_path_buf()
 }
+
 pub fn db_path() -> PathBuf {
     data_dir().join("history.db")
 }
+
 pub fn images_dir() -> PathBuf {
     data_dir().join("images")
 }
+
 /// Open (or create) the database and run all migrations.
 /// Call once at startup and keep the returned Connection for the app lifetime.
 pub fn open() -> SqlResult<Connection> {
     let dir = data_dir();
+
     std::fs::create_dir_all(&dir).expect("Could not create data directory");
     std::fs::create_dir_all(images_dir()).expect("Could not create images directory");
+
     let conn = Connection::open(db_path())?;
     // WAL mode: faster writes, readers don't block writers
+
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     migrate(&conn)?;
+
     Ok(conn)
 }
+
 fn migrate(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(
         "
@@ -50,6 +60,7 @@ fn migrate(conn: &Connection) -> SqlResult<()> {
     ",
     )
 }
+
 /// Insert a new entry. Returns the newly assigned id.
 pub fn insert(conn: &Connection, entry: &ClipboardEntry) -> SqlResult<i64> {
     let (kind, content, mime_type, image_path) = entry_to_row(entry);
@@ -68,6 +79,7 @@ pub fn insert(conn: &Connection, entry: &ClipboardEntry) -> SqlResult<i64> {
     )?;
     Ok(conn.last_insert_rowid())
 }
+
 pub fn set_pinned(conn: &Connection, id: i64, pinned: bool) -> SqlResult<()> {
     conn.execute(
         "UPDATE clipboard_entries SET pinned = ?1 WHERE id = ?2",
@@ -75,6 +87,29 @@ pub fn set_pinned(conn: &Connection, id: i64, pinned: bool) -> SqlResult<()> {
     )?;
     Ok(())
 }
+
+pub fn toggle_pin(conn: &Connection, id: i64) -> SqlResult<()> {
+    let new_pinned_value: Option<i64> = conn
+        .query_row(
+            "SELECT pinned FROM clipboard_entries WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    if let Some(pinned_value) = new_pinned_value {
+        let is_pinned: bool = pinned_value != 0;
+
+        conn.execute(
+            "UPDATE clipboard_entries SET pinned = ?1 WHERE id = ?2",
+            params![!is_pinned, id],
+        )?;
+    }
+
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, id: i64) -> SqlResult<()> {
     // Check if it has an on-disk image first
     let image_path: Option<String> = conn

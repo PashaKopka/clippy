@@ -51,4 +51,9 @@ impl ClippyDaemon {
         let conn = self.conn.lock().unwrap();
         let _ = clippy_db::set_pinned(&conn, id, pinned);
     }
+
+    async fn toggle_pin(&self, id: i64) {
+        let conn = self.conn.lock().unwrap();
+        let _ = clippy_db::toggle_pin(&conn, id);
+    }
 }
