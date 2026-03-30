@@ -25,24 +25,64 @@ impl ClipboardWindow {
         let header_bar = adw::HeaderBar::new();
         header_bar.set_show_end_title_buttons(false);
 
-        // A ViewSwitcher for "All" vs "Pinned"
+        // A ViewSwitcher for tabs
         let switcher = adw::ViewSwitcher::new();
 
         switcher.set_policy(adw::ViewSwitcherPolicy::Narrow);
         header_bar.set_title_widget(Some(&switcher));
         toolbar_view.add_top_bar(&header_bar);
 
-        let stack = adw::ViewStack::new();
-        let page_all = Self::build_list_page(&history.borrow(), false, action_tx.clone(), dbus.clone());
-        let p1 = stack.add_titled_with_icon(&page_all, Some("all"), "All", "view-list-symbolic");
+        let stack = ViewStack::new();
 
-        p1.set_icon_name(Some("view-list-symbolic"));
+        // Default tab: all
+        let page_all =
+            Self::build_list_page(&history.borrow(), false, action_tx.clone(), dbus.clone());
+        let p_all = stack.add_titled_with_icon(&page_all, Some("all"), "All", "view-list-symbolic");
+        p_all.set_icon_name(Some("view-list-symbolic"));
 
-        let page_pinned = Self::build_list_page(&history.borrow(), true, action_tx.clone(), dbus.clone());
-        let p2 =
+        // Text tab
+        let text_history: Vec<ClipboardEntry> = history
+            .borrow()
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Text { .. }))
+            .cloned()
+            .collect();
+        let page_text =
+            Self::build_list_page(&text_history, false, action_tx.clone(), dbus.clone());
+        let p_text = stack.add_titled_with_icon(&page_text, Some("text"), "Text", "view-list-symbolic");
+        p_text.set_icon_name(Some("text-x-generic"));
+
+        // Images tab
+        let images_history: Vec<ClipboardEntry> = history
+            .borrow()
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Image { .. }))
+            .cloned()
+            .collect();
+        let page_images =
+            Self::build_list_page(&images_history, false, action_tx.clone(), dbus.clone());
+        let p_images = stack.add_titled_with_icon(&page_images, Some("images"), "Images", "view-list-symbolic");
+        p_images.set_icon_name(Some("image-x-generic-symbolic"));
+
+        // Links tab
+        let links_history: Vec<ClipboardEntry> = history
+            .borrow()
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Link { .. }))
+            .cloned()
+            .collect();
+        let page_links =
+            Self::build_list_page(&links_history, false, action_tx.clone(), dbus.clone());
+        let p_links = stack.add_titled_with_icon(&page_links, Some("links"), "Links", "view-list-symbolic");
+        p_links.set_icon_name(Some("network-wireless-hotspot-symbolic"));
+
+        // Pinned tab
+        let page_pinned =
+            Self::build_list_page(&history.borrow(), true, action_tx.clone(), dbus.clone());
+        let p_pinned =
             stack.add_titled_with_icon(&page_pinned, Some("pinned"), "Pinned", "starred-symbolic");
+        p_pinned.set_icon_name(Some("starred-symbolic"));
 
-        p2.set_icon_name(Some("starred-symbolic"));
         switcher.set_stack(Some(&stack));
 
         let content = GBox::new(Orientation::Vertical, 0);
@@ -58,6 +98,7 @@ impl ClipboardWindow {
 
         (toolbar_view.upcast(), action_tx, action_rx)
     }
+
     pub fn rebuild(
         toolbar_view: &Widget,
         history: Rc<RefCell<Vec<ClipboardEntry>>>,
@@ -75,23 +116,53 @@ impl ClipboardWindow {
         let Some(stack) = child.and_then(|w| w.downcast::<adw::ViewStack>().ok()) else {
             return;
         };
+
         let entries = history.borrow();
-        for (name, pinned_only) in [("all", false), ("pinned", true)] {
+
+        let text_entries: Vec<ClipboardEntry> = entries
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Text { .. }))
+            .cloned()
+            .collect();
+
+        let image_entries: Vec<ClipboardEntry> = entries
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Image { .. }))
+            .cloned()
+            .collect();
+
+        let link_entries: Vec<ClipboardEntry> = entries
+            .iter()
+            .filter(|e| matches!(e.kind, clippy_db::EntryKind::Link { .. }))
+            .cloned()
+            .collect();
+
+        let tabs = vec![
+            ("all", entries.clone(), false),
+            ("text", text_entries, false),
+            ("images", image_entries, false),
+            ("links", link_entries, false),  // using generic string name mapping for now
+            ("pinned", entries.clone(), true),
+        ];
+
+        for (name, tab_entries, pinned_only) in tabs {
             let Some(page_widget) = stack.child_by_name(name) else {
                 continue;
             };
             let Some(sw) = page_widget.downcast_ref::<ScrolledWindow>() else {
                 continue;
             };
-            let new_clamp = Self::build_list_content(&entries, pinned_only, action_tx.clone(), dbus.clone());
+            let new_clamp =
+                Self::build_list_content(&tab_entries, pinned_only, action_tx.clone(), dbus.clone());
             sw.set_child(Some(&new_clamp));
         }
     }
+
     fn wire_search(stack: &ViewStack, search_entry: Entry) {
         let stack_clone = stack.clone();
         search_entry.connect_changed(move |entry| {
             let query = entry.text().to_lowercase();
-            for name in ["all", "pinned"] {
+            for name in ["all", "text", "images", "links", "pinned"] {
                 if let Some(page_widget) = stack_clone.child_by_name(name) {
                     if let Some(lb) = page_widget
                         .downcast_ref::<ScrolledWindow>()
@@ -113,6 +184,7 @@ impl ClipboardWindow {
             }
         });
     }
+
     fn build_list_page(
         entries: &[ClipboardEntry],
         pinned_only: bool,
@@ -136,6 +208,7 @@ impl ClipboardWindow {
 
         sw
     }
+
     fn build_list_content(
         entries: &[ClipboardEntry],
         pinned_only: bool,
@@ -177,6 +250,7 @@ impl ClipboardWindow {
         }
         clamp
     }
+
     fn build_empty_state(pinned_only: bool) -> adw::StatusPage {
         let page = adw::StatusPage::new();
         if pinned_only {

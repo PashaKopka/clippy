@@ -3,6 +3,7 @@ mod ui;
 
 use clippy_db::{ClipboardEntry, EntryKind};
 use dbus_client::DbusClient;
+use gdk_pixbuf::prelude::PixbufLoaderExt;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib, CssProvider};
 use libadwaita as adw;
@@ -10,7 +11,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use ui::{ClipboardWindow, EntryAction};
-use gdk_pixbuf::prelude::PixbufLoaderExt;
 
 const DEBUG_MODE: bool = false; // TODO remove this stuff
 fn register_resources() -> Result<(), glib::Error> {
@@ -36,6 +36,7 @@ fn main() {
     let _ = app.hold();
     app.run();
 }
+
 fn setup(app: &adw::Application) {
     let provider = CssProvider::new();
     let display = gdk::Display::default().expect("No display");
@@ -85,7 +86,12 @@ fn setup(app: &adw::Application) {
             };
 
             if need_rebuild {
-                ClipboardWindow::rebuild(&ui_root_clone, history_clone.clone(), action_tx_clone.clone(), dbus_clone.clone());
+                ClipboardWindow::rebuild(
+                    &ui_root_clone,
+                    history_clone.clone(),
+                    action_tx_clone.clone(),
+                    dbus_clone.clone(),
+                );
             }
         }
     });
@@ -173,17 +179,22 @@ fn on_action(
     }
 }
 
-fn set_clipboard(id: i64, display: &gdk::Display, history: &Rc<RefCell<Vec<ClipboardEntry>>>, dbus: &Rc<RefCell<DbusClient>>) {
+fn set_clipboard(
+    id: i64,
+    display: &gdk::Display,
+    history: &Rc<RefCell<Vec<ClipboardEntry>>>,
+    dbus: &Rc<RefCell<DbusClient>>,
+) {
     if let Some(entry) = get_entry(id, history) {
         match entry.kind {
             EntryKind::Text(t) => display.clipboard().set_text(&t),
             EntryKind::Link(t) => display.clipboard().set_text(&t),
             EntryKind::FilePath(t) => display.clipboard().set_text(&t),
-            EntryKind::Image {
-                ..
-            } => {
+            EntryKind::Image { .. } => {
                 let bytes = dbus.borrow().get_image_bytes(id).unwrap_or_default();
-                if bytes.is_empty() { return; }
+                if bytes.is_empty() {
+                    return;
+                }
 
                 let loader = gdk_pixbuf::PixbufLoader::new();
 
@@ -194,7 +205,10 @@ fn set_clipboard(id: i64, display: &gdk::Display, history: &Rc<RefCell<Vec<Clipb
                 let texture = gdk::Texture::for_pixbuf(&pixbuf);
 
                 let provider = gdk::ContentProvider::for_value(&texture.to_value());
-                display.clipboard().set_content(Some(&provider)).expect("Failed to set image to clipboard");
+                display
+                    .clipboard()
+                    .set_content(Some(&provider))
+                    .expect("Failed to set image to clipboard");
             }
         }
     }

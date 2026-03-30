@@ -12,3 +12,4 @@ env_logger.workspace = true
 anyhow = "1.0.102"
 rusqlite.workspace = true
 image.workspace = true
+url = "2.5.8"

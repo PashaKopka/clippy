@@ -1,6 +1,8 @@
 use clippy_db::{png_dimensions, ClipboardEntry, EntryKind};
 use std::sync::{Arc, Mutex};
 use zbus::interface;
+use url::Url;
+
 pub struct ClippyDaemon {
     pub conn: Arc<Mutex<rusqlite::Connection>>,
 }
@@ -26,7 +28,11 @@ impl ClippyDaemon {
                 .as_secs() as i64;
             let entry = ClipboardEntry {
                 id: 0,
-                kind: EntryKind::Text(text),
+                kind: if is_link(text.as_str()) {
+                    EntryKind::Link(text)
+                } else {
+                    EntryKind::Text(text)
+                },
                 timestamp: now,
                 pinned: false,
             };
@@ -113,4 +119,8 @@ impl ClippyDaemon {
         }
         let _ = Self::history_changed(&ctxt).await;
     }
+}
+
+fn is_link(text: &str) -> bool {
+    Url::parse(text).is_ok()
 }
