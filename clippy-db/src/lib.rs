@@ -134,6 +134,27 @@ pub fn prune_old(conn: &Connection, older_than_secs: i64) -> SqlResult<usize> {
     )?;
     Ok(deleted)
 }
+
+pub fn get_image_bytes(conn: &Connection, id: i64) -> SqlResult<Option<Vec<u8>>> {
+    let mut stmt = conn.prepare("SELECT content, image_path FROM clipboard_entries WHERE id = ?1 AND kind = 'image'")?;
+    let mut rows = stmt.query(params![id])?;
+    if let Some(row) = rows.next()? {
+        let content: Vec<u8> = row.get(0)?;
+        let image_path: Option<String> = row.get(1)?;
+        let bytes = if let Some(path) = image_path {
+            std::fs::read(&path).unwrap_or_else(|e| {
+                eprintln!("[db] failed to read image {path}: {e}");
+                vec![]
+            })
+        } else {
+            content
+        };
+        Ok(Some(bytes))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Load all entries, newest first.
 pub fn load_all(conn: &Connection) -> SqlResult<Vec<ClipboardEntry>> {
     let mut stmt = conn.prepare(
@@ -282,7 +303,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> SqlResult<Option<ClipboardEntry>> {
 }
 /// Read width/height from a PNG header without decoding the whole image.
 /// Returns (0, 0) if the bytes are not a valid PNG.
-fn png_dimensions(bytes: &[u8]) -> (i32, i32) {
+pub fn png_dimensions(bytes: &[u8]) -> (i32, i32) {
     // PNG header: 8 bytes signature + 4 bytes length + 4 bytes "IHDR"
     //             + 4 bytes width + 4 bytes height
     if bytes.len() < 24 {

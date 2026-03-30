@@ -16,6 +16,7 @@ pub struct ClipboardWindow;
 impl ClipboardWindow {
     pub fn build(
         history: Rc<RefCell<Vec<ClipboardEntry>>>,
+        dbus: Rc<RefCell<crate::dbus_client::DbusClient>>,
     ) -> (Widget, Sender<EntryAction>, Receiver<EntryAction>) {
         let (action_tx, action_rx) = channel();
 
@@ -32,12 +33,12 @@ impl ClipboardWindow {
         toolbar_view.add_top_bar(&header_bar);
 
         let stack = adw::ViewStack::new();
-        let page_all = Self::build_list_page(&history.borrow(), false, action_tx.clone());
+        let page_all = Self::build_list_page(&history.borrow(), false, action_tx.clone(), dbus.clone());
         let p1 = stack.add_titled_with_icon(&page_all, Some("all"), "All", "view-list-symbolic");
 
         p1.set_icon_name(Some("view-list-symbolic"));
 
-        let page_pinned = Self::build_list_page(&history.borrow(), true, action_tx.clone());
+        let page_pinned = Self::build_list_page(&history.borrow(), true, action_tx.clone(), dbus.clone());
         let p2 =
             stack.add_titled_with_icon(&page_pinned, Some("pinned"), "Pinned", "starred-symbolic");
 
@@ -61,6 +62,7 @@ impl ClipboardWindow {
         toolbar_view: &Widget,
         history: Rc<RefCell<Vec<ClipboardEntry>>>,
         action_tx: Sender<EntryAction>,
+        dbus: Rc<RefCell<crate::dbus_client::DbusClient>>,
     ) {
         let Some(tv) = toolbar_view.downcast_ref::<adw::ToolbarView>() else {
             return;
@@ -81,7 +83,7 @@ impl ClipboardWindow {
             let Some(sw) = page_widget.downcast_ref::<ScrolledWindow>() else {
                 continue;
             };
-            let new_clamp = Self::build_list_content(&entries, pinned_only, action_tx.clone());
+            let new_clamp = Self::build_list_content(&entries, pinned_only, action_tx.clone(), dbus.clone());
             sw.set_child(Some(&new_clamp));
         }
     }
@@ -115,6 +117,7 @@ impl ClipboardWindow {
         entries: &[ClipboardEntry],
         pinned_only: bool,
         action_tx: Sender<EntryAction>,
+        dbus: Rc<RefCell<crate::dbus_client::DbusClient>>,
     ) -> ScrolledWindow {
         let sw = ScrolledWindow::builder()
             .vexpand(true)
@@ -128,6 +131,7 @@ impl ClipboardWindow {
             entries,
             pinned_only,
             action_tx,
+            dbus,
         )));
 
         sw
@@ -136,6 +140,7 @@ impl ClipboardWindow {
         entries: &[ClipboardEntry],
         pinned_only: bool,
         action_tx: Sender<EntryAction>,
+        dbus: Rc<RefCell<crate::dbus_client::DbusClient>>,
     ) -> adw::Clamp {
         let clamp = adw::Clamp::new();
         clamp.set_maximum_size(600);
@@ -156,7 +161,7 @@ impl ClipboardWindow {
             list.add_css_class("boxed-list");
 
             for entry in &filtered {
-                let row = build_entry_row(entry, action_tx.clone());
+                let row = build_entry_row(entry, action_tx.clone(), dbus.clone());
                 row.set_tooltip_text(Some(&entry.preview()));
                 list.append(&row);
             }

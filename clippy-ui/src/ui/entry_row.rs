@@ -10,7 +10,11 @@ pub enum EntryAction {
     Delete(i64),
 }
 
-pub fn build_entry_row(entry: &ClipboardEntry, action_tx: Sender<EntryAction>) -> ListBoxRow {
+pub fn build_entry_row(
+    entry: &ClipboardEntry,
+    action_tx: Sender<EntryAction>,
+    dbus: std::rc::Rc<std::cell::RefCell<crate::dbus_client::DbusClient>>,
+) -> ListBoxRow {
     // Outer row
     let row = ListBoxRow::new();
 
@@ -24,7 +28,7 @@ pub fn build_entry_row(entry: &ClipboardEntry, action_tx: Sender<EntryAction>) -
     root.add_css_class("entry-root");
 
     // Left: thumbnail / icon
-    let thumb = build_thumbnail(entry);
+    let thumb = build_thumbnail(entry, dbus);
     thumb.add_css_class("entry-thumb");
     root.append(&thumb);
 
@@ -77,8 +81,55 @@ pub fn build_entry_row(entry: &ClipboardEntry, action_tx: Sender<EntryAction>) -
     row
 }
 
-fn build_thumbnail(entry: &ClipboardEntry) -> Widget {
+fn build_thumbnail(
+    entry: &ClipboardEntry,
+    dbus: std::rc::Rc<std::cell::RefCell<crate::dbus_client::DbusClient>>,
+) -> Widget {
     match &entry.kind {
+        clippy_db::EntryKind::Image { .. } => {
+            let img = Image::new();
+            img.set_pixel_size(48); // nice size thumbnail
+            let img_weak = img.downgrade();
+
+            let (tx, rx) = async_channel::bounded(1);
+            dbus.borrow().request_image_bytes_async(entry.id, tx);
+
+            glib::spawn_future_local(async move {
+                if let Ok(bytes) = rx.recv().await {
+                    if let Some(img_widget) = img_weak.upgrade() {
+                        let loader = gdk_pixbuf::PixbufLoader::new();
+                        if loader.write(&bytes).is_ok() && loader.close().is_ok() {
+                            if let Some(pixbuf) = loader.pixbuf() {
+                                let max_size = 64;
+                                let w = pixbuf.width();
+                                let h = pixbuf.height();
+                                if w > 0 && h > 0 {
+                                    let (new_w, new_h) = if w > h {
+                                        let ratio = max_size as f64 / w as f64;
+                                        (max_size, (h as f64 * ratio) as i32)
+                                    } else {
+                                        let ratio = max_size as f64 / h as f64;
+                                        ((w as f64 * ratio) as i32, max_size)
+                                    };
+                                    if let Some(scaled) = pixbuf.scale_simple(
+                                        new_w,
+                                        new_h,
+                                        gdk_pixbuf::InterpType::Bilinear,
+                                    ) {
+                                        let tex = gtk4::gdk::Texture::for_pixbuf(&scaled);
+                                        img_widget.set_paintable(Some(&tex));
+                                    } else {
+                                        let tex = gtk4::gdk::Texture::for_pixbuf(&pixbuf);
+                                        img_widget.set_paintable(Some(&tex));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            img.upcast()
+        }
         _ => icon_widget(entry.icon_name(), 32),
     }
 }

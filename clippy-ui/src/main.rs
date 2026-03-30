@@ -10,6 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use ui::{ClipboardWindow, EntryAction};
+use gdk_pixbuf::prelude::PixbufLoaderExt;
+
 const DEBUG_MODE: bool = false; // TODO remove this stuff
 fn register_resources() -> Result<(), glib::Error> {
     gio::resources_register_include! {"clippy.gresource"}
@@ -52,7 +54,7 @@ fn setup(app: &adw::Application) {
     let history: Rc<RefCell<Vec<ClipboardEntry>>> =
         Rc::new(RefCell::new(get_history(&dbus.borrow())));
 
-    let (ui_root, action_tx, action_rx) = ClipboardWindow::build(history.clone());
+    let (ui_root, action_tx, action_rx) = ClipboardWindow::build(history.clone(), dbus.clone());
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Clippy")
@@ -62,32 +64,34 @@ fn setup(app: &adw::Application) {
         .content(&ui_root)
         .build();
 
-    glib::timeout_add_local(std::time::Duration::from_millis(500), {
-        let history = history.clone();
-        let ui_root = ui_root.clone();
-        let action_tx = action_tx.clone();
-        let dbus = dbus.clone();
+    let (update_tx, update_rx) = async_channel::unbounded::<()>();
 
-        move || {
-            let entries = get_history(&dbus.borrow());
+    let history_clone = history.clone();
+    let dbus_clone = dbus.clone();
+    let ui_root_clone = ui_root.clone();
+    let action_tx_clone = action_tx.clone();
 
+    glib::spawn_future_local(async move {
+        while let Ok(_) = update_rx.recv().await {
+            let entries = get_history(&dbus_clone.borrow());
             let need_rebuild = {
-                let mut h = history.borrow_mut();
-
+                let mut h = history_clone.borrow_mut();
                 if *h != entries {
                     *h = entries;
                     true
                 } else {
                     false
                 }
-            }; // <-- borrow тут ЗАКІНЧИВСЯ
+            };
 
             if need_rebuild {
-                ClipboardWindow::rebuild(&ui_root, history.clone(), action_tx.clone());
+                ClipboardWindow::rebuild(&ui_root_clone, history_clone.clone(), action_tx_clone.clone(), dbus_clone.clone());
             }
-
-            glib::ControlFlow::Continue
         }
+    });
+
+    let _ = dbus.borrow().spawn_history_changed_listener(move || {
+        let _ = update_tx.send_blocking(());
     });
 
     if !DEBUG_MODE {
@@ -157,8 +161,7 @@ fn on_action(
 ) {
     match action {
         EntryAction::Paste(id) => {
-            let text = get_entry_text(id, history);
-            display.clipboard().set_text(&text);
+            set_clipboard(id, display, history, dbus);
             window.set_visible(false);
         }
         EntryAction::TogglePin(id) => {
@@ -170,16 +173,33 @@ fn on_action(
     }
 }
 
-fn get_entry_text(id: i64, history: &Rc<RefCell<Vec<ClipboardEntry>>>) -> String {
-    history
-        .borrow()
-        .iter()
-        .find(|e| e.id == id)
-        .map(|e| match &e.kind {
-            EntryKind::Text(t) => t.clone(),
-            EntryKind::Link(t) => t.clone(),
-            EntryKind::FilePath(t) => t.clone(),
-            EntryKind::Image { .. } => String::new(),
-        })
-        .unwrap_or_default()
+fn set_clipboard(id: i64, display: &gdk::Display, history: &Rc<RefCell<Vec<ClipboardEntry>>>, dbus: &Rc<RefCell<DbusClient>>) {
+    if let Some(entry) = get_entry(id, history) {
+        match entry.kind {
+            EntryKind::Text(t) => display.clipboard().set_text(&t),
+            EntryKind::Link(t) => display.clipboard().set_text(&t),
+            EntryKind::FilePath(t) => display.clipboard().set_text(&t),
+            EntryKind::Image {
+                ..
+            } => {
+                let bytes = dbus.borrow().get_image_bytes(id).unwrap_or_default();
+                if bytes.is_empty() { return; }
+
+                let loader = gdk_pixbuf::PixbufLoader::new();
+
+                loader.write(&bytes).unwrap();
+                loader.close().unwrap();
+
+                let pixbuf = loader.pixbuf().unwrap();
+                let texture = gdk::Texture::for_pixbuf(&pixbuf);
+
+                let provider = gdk::ContentProvider::for_value(&texture.to_value());
+                display.clipboard().set_content(Some(&provider)).expect("Failed to set image to clipboard");
+            }
+        }
+    }
+}
+
+fn get_entry(id: i64, history: &Rc<RefCell<Vec<ClipboardEntry>>>) -> Option<ClipboardEntry> {
+    history.borrow().iter().find(|e| e.id == id).cloned()
 }

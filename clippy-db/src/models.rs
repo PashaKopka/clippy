@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub enum EntryKind {
     Text(String),
     Image {
+        #[serde(skip, default)]
         bytes: Vec<u8>,
         width: i32,
         height: i32,
