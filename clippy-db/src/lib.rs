@@ -4,6 +4,11 @@ pub use models::*;
 use rusqlite::{params, Connection, Result as SqlResult};
 use std::path::PathBuf;
 
+// Maximum number of clipboard entries to keep
+pub const MAX_ENTRIES_NUMBER: i64 = 30;
+pub const PRUNE_OLD_TIME_SECS: i64 = 7 * 24 * 60 * 60; // 7 days
+pub const IS_PRUNE_OLD_ACTIVE: bool = true;
+
 // Images larger than this are stored on disk instead of in the DB blob.
 const IMAGE_INLINE_LIMIT_BYTES: usize = 1024 * 1024; // 1 MB
 
@@ -57,8 +62,30 @@ fn migrate(conn: &Connection) -> SqlResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_created_at ON clipboard_entries(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_pinned     ON clipboard_entries(pinned);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     ",
     )
+}
+
+pub fn get_setting(conn: &Connection, key: &str, default: &str) -> String {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .unwrap_or_else(|_| default.to_string())
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> SqlResult<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )?;
+    Ok(())
 }
 
 /// Insert a new entry. Returns the newly assigned id.
@@ -136,8 +163,66 @@ pub fn is_text_exists(conn: &Connection, text: &str) -> SqlResult<bool> {
     Ok(count > 0)
 }
 
+pub fn run_cleanup(conn: &Connection) -> SqlResult<()> {
+    let max_entries: i64 = get_setting(conn, "max_entries", &MAX_ENTRIES_NUMBER.to_string())
+        .parse()
+        .unwrap_or(MAX_ENTRIES_NUMBER);
+
+    let is_prune_active: bool = get_setting(conn, "is_prune_active", if IS_PRUNE_OLD_ACTIVE { "true" } else { "false" })
+        .parse()
+        .unwrap_or(IS_PRUNE_OLD_ACTIVE);
+
+    let prune_time_secs: i64 = get_setting(conn, "prune_time_secs", &PRUNE_OLD_TIME_SECS.to_string())
+        .parse()
+        .unwrap_or(PRUNE_OLD_TIME_SECS);
+
+    // Keep only the most recent max_entries unpinned items
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, image_path FROM clipboard_entries
+         WHERE pinned = 0
+         ORDER BY created_at DESC
+         LIMIT -1 OFFSET {}",
+         max_entries
+    ))?;
+
+    let to_delete: Vec<(i64, Option<String>)> = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })?
+    .filter_map(Result::ok)
+    .collect();
+
+    for (id, path) in to_delete {
+        if let Some(p) = path {
+            let _ = std::fs::remove_file(p);
+        }
+        conn.execute("DELETE FROM clipboard_entries WHERE id = ?1", params![id])?;
+    }
+
+    if is_prune_active {
+        // Then delete items older than prune_time_secs
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let older_than = now - prune_time_secs;
+
+        prune_old(conn, older_than)?;
+    }
+
+    Ok(())
+}
+
 /// Remove all non-pinned entries older than `older_than_secs` Unix timestamp.
 pub fn prune_old(conn: &Connection, older_than_secs: i64) -> SqlResult<usize> {
+    // Delete files first
+    let mut stmt = conn.prepare("SELECT image_path FROM clipboard_entries WHERE pinned = 0 AND created_at < ?1 AND image_path IS NOT NULL")?;
+    let paths: Vec<String> = stmt.query_map(params![older_than_secs], |row| row.get(0))?
+        .filter_map(Result::ok)
+        .collect();
+    for p in paths {
+        let _ = std::fs::remove_file(p);
+    }
+
     let deleted = conn.execute(
         "DELETE FROM clipboard_entries WHERE pinned = 0 AND created_at < ?1",
         params![older_than_secs],

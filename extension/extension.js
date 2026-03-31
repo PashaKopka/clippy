@@ -2,6 +2,9 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 export default class ClippyWatcher extends Extension {
     enable() {
@@ -16,6 +19,8 @@ export default class ClippyWatcher extends Extension {
             return GLib.SOURCE_CONTINUE; // keep repeating
         });
 
+        this._buildTrayIcon();
+
         console.log('[Clippy] extension enabled');
     }
 
@@ -24,9 +29,103 @@ export default class ClippyWatcher extends Extension {
             GLib.source_remove(this._timer);
             this._timer = null;
         }
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
         this._clipboard = null;
         this._last = '';
         console.log('[Clippy] extension disabled');
+    }
+
+    _buildTrayIcon() {
+        this._indicator = new PanelMenu.Button(0.0, 'ClippyIndicator', false);
+
+        // Icon
+        let icon = new St.Icon({
+            icon_name: 'edit-paste-symbolic',
+            style_class: 'system-status-icon'
+        });
+        this._indicator.add_child(icon);
+
+        // Max Entries Option
+        let maxEntriesMenu = new PopupMenu.PopupSubMenuMenuItem('Max entries');
+        let entryCounts = [10, 30, 50, 100];
+        for (let count of entryCounts) {
+            maxEntriesMenu.menu.addAction(`${count}`, () => {
+                this._setSetting('max_entries', `${count}`);
+            });
+        }
+        this._indicator.menu.addMenuItem(maxEntriesMenu);
+
+        // Prune Old Time Option
+        let pruneTimeMenu = new PopupMenu.PopupSubMenuMenuItem('Prune old time');
+        let timeOptions = [
+            { label: '1 day', secs: 1 * 24 * 60 * 60 },
+            { label: '3 days', secs: 3 * 24 * 60 * 60 },
+            { label: '7 days', secs: 7 * 24 * 60 * 60 },
+            { label: '30 days', secs: 30 * 24 * 60 * 60 }
+        ];
+        for (let opt of timeOptions) {
+            pruneTimeMenu.menu.addAction(opt.label, () => {
+                this._setSetting('prune_time_secs', `${opt.secs}`);
+                this._setSetting('is_prune_active', 'true');
+            });
+        }
+        pruneTimeMenu.menu.addAction('Never', () => {
+            this._setSetting('is_prune_active', 'false');
+        });
+        this._indicator.menu.addMenuItem(pruneTimeMenu);
+
+        this._indicator.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Quit Option
+        this._indicator.menu.addAction('Quit Clippy', () => {
+            this._quitDaemon();
+            // Disabling the extension kills this part automatically from user point of view,
+            // or the user will toggle it off in App. We stop the daemon.
+            this.disable();
+        });
+
+        Main.panel.addToStatusArea('ClippyIndicator', this._indicator);
+    }
+
+    _setSetting(key, value) {
+        try {
+            Gio.DBus.session.call(
+                'com.example.clippy',
+                 '/com/example/clippy',
+                 'com.example.clippy.Daemon',
+                 'SetSetting',
+                 new GLib.Variant('(ss)', [key, value]),
+                 null,
+                 Gio.DBusCallFlags.NO_AUTO_START,
+                 1000,
+                 null,
+                 null
+            );
+        } catch (e) {
+            console.error(`[Clippy] Failed to set setting: ${e}`);
+        }
+    }
+
+    _quitDaemon() {
+        try {
+            Gio.DBus.session.call(
+                'com.example.clippy',
+                 '/com/example/clippy',
+                 'com.example.clippy.Daemon',
+                 'Quit',
+                 null,
+                 null,
+                 Gio.DBusCallFlags.NO_AUTO_START,
+                 1000,
+                 null,
+                 null
+            );
+        } catch (e) {
+            console.error(`[Clippy] Failed to quit daemon: ${e}`);
+        }
     }
 
     _check() {

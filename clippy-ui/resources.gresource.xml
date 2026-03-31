@@ -2,5 +2,6 @@
 <gresources>
     <gresource prefix="/com/example/clippy">
         <file compressed="true" alias="style.css">src/ui/resources/style.css</file>
+        <file alias="icons/hicolor/scalable/apps/clippy-icon.png">src/ui/resources/clippy-icon.png</file>
     </gresource>
 </gresources>

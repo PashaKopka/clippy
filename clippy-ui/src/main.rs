@@ -38,8 +38,15 @@ fn main() {
 }
 
 fn setup(app: &adw::Application) {
+    glib::set_program_name(Some("Clippy"));
+    glib::set_application_name("Clippy");
+    gtk4::Window::set_default_icon_name("clippy-icon");
+
     let provider = CssProvider::new();
     let display = gdk::Display::default().expect("No display");
+
+    let icon_theme = gtk4::IconTheme::for_display(&display);
+    icon_theme.add_resource_path("/com/example/clippy/icons");
 
     provider.load_from_resource("/com/example/clippy/style.css");
     gtk4::style_context_add_provider_for_display(

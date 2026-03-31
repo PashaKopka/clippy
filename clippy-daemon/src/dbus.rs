@@ -146,6 +146,26 @@ impl ClippyDaemon {
         }
         let _ = Self::history_changed(&ctxt).await;
     }
+
+    async fn set_setting(&self, key: String, value: String) {
+        let conn = self.conn.lock().unwrap();
+        let _ = clippy_db::set_setting(&conn, &key, &value);
+        let _ = clippy_db::run_cleanup(&conn);
+    }
+
+    async fn get_setting(&self, key: String) -> String {
+        let conn = self.conn.lock().unwrap();
+        clippy_db::get_setting(&conn, &key, "")
+    }
+
+    async fn quit(&self) {
+        // Kill clippy-ui processes if any are running
+        let _ = std::process::Command::new("killall")
+            .arg("clippy-ui")
+            .output();
+
+        std::process::exit(0);
+    }
 }
 
 fn is_link(text: &str) -> bool {
