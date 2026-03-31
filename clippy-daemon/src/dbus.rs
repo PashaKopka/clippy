@@ -149,5 +149,16 @@ impl ClippyDaemon {
 }
 
 fn is_link(text: &str) -> bool {
-    Url::parse(text).is_ok()
+    let url = Url::parse(text);
+    if !url.is_ok() {
+        return false;
+    }
+
+    if let Ok(url) = url {
+        if url.scheme() == "https" || url.scheme() == "http" {
+            return true;
+        }
+        return false;
+    }
+    false
 }

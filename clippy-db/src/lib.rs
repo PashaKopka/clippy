@@ -129,7 +129,7 @@ pub fn delete(conn: &Connection, id: i64) -> SqlResult<()> {
 
 pub fn is_text_exists(conn: &Connection, text: &str) -> SqlResult<bool> {
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM clipboard_entries WHERE kind = 'text' AND CAST(content AS TEXT) = ?1",
+        "SELECT COUNT(*) FROM clipboard_entries WHERE (kind = 'text' OR kind = 'link') AND CAST(content AS TEXT) = ?1",
         params![text],
         |row| row.get(0),
     )?;
