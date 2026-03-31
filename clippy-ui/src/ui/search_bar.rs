@@ -24,13 +24,16 @@ pub fn build_search_bar() -> (GBox, Entry) {
     clear_btn.add_css_class("search-clear");
     clear_btn.set_valign(Align::Center);
     clear_btn.set_tooltip_text(Some("Clear search"));
-    clear_btn.set_visible(false);
+    clear_btn.set_opacity(if buffer.text().is_empty() { 0.0 } else { 1.0 });
+    clear_btn.set_sensitive(!buffer.text().is_empty());
 
     // Show/hide clear button based on entry content
     entry.connect_changed({
         let clear_btn = clear_btn.clone();
         move |e| {
-            clear_btn.set_visible(!e.text().is_empty());
+            let is_empty = e.text().is_empty();
+            clear_btn.set_opacity(if is_empty { 0.0 } else { 1.0 });
+            clear_btn.set_sensitive(!is_empty);
         }
     });
 

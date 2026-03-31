@@ -14,6 +14,20 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 pub struct ClipboardWindow;
 
 impl ClipboardWindow {
+    fn find_listbox(w: &Widget) -> Option<ListBox> {
+        if let Some(lb) = w.downcast_ref::<ListBox>() {
+            return Some(lb.clone());
+        }
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            if let Some(lb) = Self::find_listbox(&c) {
+                return Some(lb);
+            }
+            child = c.next_sibling();
+        }
+        None
+    }
+
     pub fn build(
         history: Rc<RefCell<Vec<ClipboardEntry>>>,
         dbus: Rc<RefCell<crate::dbus_client::DbusClient>>,
@@ -49,7 +63,8 @@ impl ClipboardWindow {
             .collect();
         let page_text =
             Self::build_list_page(&text_history, false, action_tx.clone(), dbus.clone());
-        let p_text = stack.add_titled_with_icon(&page_text, Some("text"), "Text", "view-list-symbolic");
+        let p_text =
+            stack.add_titled_with_icon(&page_text, Some("text"), "Text", "view-list-symbolic");
         p_text.set_icon_name(Some("text-x-generic"));
 
         // Images tab
@@ -61,7 +76,12 @@ impl ClipboardWindow {
             .collect();
         let page_images =
             Self::build_list_page(&images_history, false, action_tx.clone(), dbus.clone());
-        let p_images = stack.add_titled_with_icon(&page_images, Some("images"), "Images", "view-list-symbolic");
+        let p_images = stack.add_titled_with_icon(
+            &page_images,
+            Some("images"),
+            "Images",
+            "view-list-symbolic",
+        );
         p_images.set_icon_name(Some("image-x-generic-symbolic"));
 
         // Links tab
@@ -73,7 +93,8 @@ impl ClipboardWindow {
             .collect();
         let page_links =
             Self::build_list_page(&links_history, false, action_tx.clone(), dbus.clone());
-        let p_links = stack.add_titled_with_icon(&page_links, Some("links"), "Links", "view-list-symbolic");
+        let p_links =
+            stack.add_titled_with_icon(&page_links, Some("links"), "Links", "view-list-symbolic");
         p_links.set_icon_name(Some("network-wireless-hotspot-symbolic"));
 
         // Files tab
@@ -85,7 +106,8 @@ impl ClipboardWindow {
             .collect();
         let page_files =
             Self::build_list_page(&files_history, false, action_tx.clone(), dbus.clone());
-        let p_files = stack.add_titled_with_icon(&page_files, Some("files"), "Files", "folder-symbolic");
+        let p_files =
+            stack.add_titled_with_icon(&page_files, Some("files"), "Files", "folder-symbolic");
         p_files.set_icon_name(Some("network-wireless-hotspot-symbolic"));
 
         // Pinned tab
@@ -99,8 +121,18 @@ impl ClipboardWindow {
 
         let content = GBox::new(Orientation::Vertical, 0);
         let (search_widget, search_entry) = build_search_bar();
-
         content.append(&search_widget);
+
+        let stack_for_search = stack.clone();
+        search_entry.connect_changed(move |_entry| {
+            for name in ["all", "text", "images", "links", "files", "pinned"] {
+                if let Some(page_widget) = stack_for_search.child_by_name(name) {
+                    if let Some(lb) = Self::find_listbox(&page_widget) {
+                        lb.invalidate_filter();
+                    }
+                }
+            }
+        });
 
         Self::wire_search(&stack, search_entry);
 
@@ -120,37 +152,36 @@ impl ClipboardWindow {
         let Some(tv) = toolbar_view.downcast_ref::<adw::ToolbarView>() else {
             return;
         };
+
         let Some(content) = tv.content().and_then(|w| w.downcast::<GBox>().ok()) else {
             return;
         };
+
         let mut child = content.first_child();
         child = child.and_then(|w| w.next_sibling());
+
         let Some(stack) = child.and_then(|w| w.downcast::<adw::ViewStack>().ok()) else {
             return;
         };
 
         let entries = history.borrow();
 
-        let text_entries: Vec<ClipboardEntry> = entries
-            .iter()
+        let text_entries: Vec<_> = entries.iter()
             .filter(|e| matches!(e.kind, clippy_db::EntryKind::Text { .. }))
             .cloned()
             .collect();
 
-        let image_entries: Vec<ClipboardEntry> = entries
-            .iter()
+        let image_entries: Vec<_> = entries.iter()
             .filter(|e| matches!(e.kind, clippy_db::EntryKind::Image { .. }))
             .cloned()
             .collect();
 
-        let link_entries: Vec<ClipboardEntry> = entries
-            .iter()
+        let link_entries: Vec<_> = entries.iter()
             .filter(|e| matches!(e.kind, clippy_db::EntryKind::Link { .. }))
             .cloned()
             .collect();
 
-        let files_entries = entries
-            .iter()
+        let files_entries: Vec<_> = entries.iter()
             .filter(|e| matches!(e.kind, clippy_db::EntryKind::FilePath { .. }))
             .cloned()
             .collect();
@@ -168,40 +199,59 @@ impl ClipboardWindow {
             let Some(page_widget) = stack.child_by_name(name) else {
                 continue;
             };
-            let Some(sw) = page_widget.downcast_ref::<ScrolledWindow>() else {
+
+            let Some(list) = Self::find_listbox(&page_widget) else {
                 continue;
             };
-            let new_clamp =
-                Self::build_list_content(&tab_entries, pinned_only, action_tx.clone(), dbus.clone());
-            sw.set_child(Some(&new_clamp));
+
+            while let Some(row) = list.first_child() {
+                list.remove(&row);
+            }
+
+            for entry in tab_entries.iter().filter(|e| !pinned_only || e.pinned) {
+                let row = build_entry_row(entry, action_tx.clone(), dbus.clone());
+
+                row.set_widget_name(&format!(
+                    "{}|{}",
+                    entry.id,
+                    match &entry.kind {
+                        clippy_db::EntryKind::Text(t)
+                        | clippy_db::EntryKind::Link(t)
+                        | clippy_db::EntryKind::FilePath(t) => t,
+                        _ => "",
+                    }
+                ));
+
+                row.set_tooltip_text(Some(&entry.preview()));
+                list.append(&row);
+            }
+
+            list.invalidate_filter();
         }
     }
 
     fn wire_search(stack: &ViewStack, search_entry: Entry) {
         let stack_clone = stack.clone();
-        search_entry.connect_changed(move |entry| {
-            let query = entry.text().to_lowercase();
-            for name in ["all", "text", "images", "links", "pinned"] {
-                if let Some(page_widget) = stack_clone.child_by_name(name) {
-                    if let Some(lb) = page_widget
-                        .downcast_ref::<ScrolledWindow>()
-                        .and_then(|sw| sw.child())
-                        .and_then(|v| v.first_child())
-                        .and_then(|w| w.downcast::<ListBox>().ok())
-                    {
-                        let q = query.clone();
-                        lb.set_filter_func(move |row| {
-                            if q.is_empty() {
-                                return true;
-                            }
-                            let tooltip = row.tooltip_text().unwrap_or_default().to_lowercase();
-                            tooltip.contains(&q)
-                        });
-                        lb.invalidate_filter();
-                    }
+
+        for name in ["all", "text", "images", "links", "files", "pinned"] {
+            if let Some(page_widget) = stack_clone.child_by_name(name) {
+                if let Some(lb) = Self::find_listbox(&page_widget) {
+                    let search_entry_clone = search_entry.clone();
+                    lb.set_filter_func(move |row| {
+                        let q = search_entry_clone.text().to_lowercase();
+                        if q.is_empty() { return true; }
+
+                        let text = row
+                            .widget_name()
+                            .split_once('|')
+                            .map(|(_, text)| text.to_lowercase())
+                            .unwrap_or_default();
+
+                        !text.is_empty() && text.contains(&q)
+                    });
                 }
             }
-        });
+        }
     }
 
     fn build_list_page(
@@ -254,14 +304,28 @@ impl ClipboardWindow {
 
             for entry in &filtered {
                 let row = build_entry_row(entry, action_tx.clone(), dbus.clone());
+
+                row.set_widget_name(&format!(
+                    "{}|{}",
+                    entry.id,
+                    match &entry.kind {
+                        clippy_db::EntryKind::Text(t)
+                        | clippy_db::EntryKind::Link(t)
+                        | clippy_db::EntryKind::FilePath(t) => t,
+                        _ => "",
+                    }
+                ));
+
                 row.set_tooltip_text(Some(&entry.preview()));
                 list.append(&row);
             }
             list.connect_row_activated({
                 let tx = action_tx.clone();
                 move |_, row| {
-                    if let Ok(id) = row.widget_name().parse::<i64>() {
-                        let _ = tx.send(EntryAction::Paste(id));
+                    if let Some((id_str, _)) = row.widget_name().split_once('|') {
+                        if let Ok(id) = id_str.parse::<i64>() {
+                            let _ = tx.send(EntryAction::Paste(id));
+                        }
                     }
                 }
             });
