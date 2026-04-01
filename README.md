@@ -42,15 +42,15 @@ This script will:
    ```
 
 3. Install the application icon and desktop shortcut:
-   ```bash
+```bash
    mkdir -p ~/.local/share/icons/hicolor/512x512/apps/
    cp clippy-ui/src/ui/resources/clippy-icon.png ~/.local/share/icons/hicolor/512x512/apps/clippy-icon.png
    mkdir -p ~/.local/share/applications
-   cat << 'EOF' > ~/.local/share/applications/com.example.clippy.ui.desktop
+   cat << EOF > ~/.local/share/applications/com.example.clippy.ui.desktop
    [Desktop Entry]
    Name=Clippy
    Comment=Clipboard Manager
-   Exec=/home/$USER/.local/bin/clippy-ui
+   Exec=$HOME/.local/bin/clippy-ui
    Icon=clippy-icon
    Terminal=false
    Type=Application
@@ -59,21 +59,21 @@ This script will:
    StartupWMClass=com.example.clippy.ui
    EOF
    update-desktop-database ~/.local/share/applications/
-   ```
+```
 
 4. Add auto-start on login for the daemon:
-   ```bash
+```bash
    mkdir -p ~/.config/autostart
-   cat << 'EOF' > ~/.config/autostart/clippy-daemon.desktop
+   cat << EOF > ~/.config/autostart/clippy-daemon.desktop
    [Desktop Entry]
    Type=Application
    Name=Clippy Daemon
-   Exec=/home/$USER/.local/bin/clippy-daemon
+   Exec=$HOME/.local/bin/clippy-daemon
    Hidden=false
    NoDisplay=false
    X-GNOME-Autostart-enabled=true
    EOF
-   ```
+```
 
 5. Install the GNOME extension manually:
    ```bash
@@ -83,6 +83,22 @@ This script will:
    ```
 
 6. Restart the GNOME Shell (log out/in or Alt+F2 `r` on X11) and run `~/.local/bin/clippy-daemon &`.
+
+## Setting up a Hotkey
+
+To easily access the Clippy UI, you can bind it to a custom keyboard shortcut in GNOME:
+
+1. Open **Settings** in GNOME.
+2. Navigate to **Keyboard** -> **Keyboard Shortcuts** -> **View and Customize Shortcuts**.
+3. Scroll down and click on **Custom Shortcuts**.
+4. Click the **+** (Add) button.
+5. Fill in the details:
+   - **Name**: Clippy
+   - **Command**: `~/.local/bin/clippy-ui`
+   - **Shortcut**: Set your desired key combination (e.g., `Super + V`).
+6. Click **Add**.
+
+Now, pressing your chosen hotkey will instantly launch the Clippy UI!
 
 ## Automatic Uninstallation
 

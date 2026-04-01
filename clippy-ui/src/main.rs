@@ -12,7 +12,6 @@ use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use ui::{ClipboardWindow, EntryAction};
 
-const DEBUG_MODE: bool = false; // TODO remove this stuff
 fn register_resources() -> Result<(), glib::Error> {
     gio::resources_register_include! {"clippy.gresource"}
 }
@@ -107,12 +106,10 @@ fn setup(app: &adw::Application) {
         let _ = update_tx.send_blocking(());
     });
 
-    if !DEBUG_MODE {
-        window.connect_close_request(|win| {
-            win.set_visible(false);
-            glib::Propagation::Stop
-        });
-    }
+    window.connect_close_request(|win| {
+        win.set_visible(false);
+        glib::Propagation::Stop
+    });
 
     let win_clone = window.clone();
     let display_clone = display.clone();
@@ -194,7 +191,8 @@ fn on_action(
         EntryAction::OpenInFiles(id) => {
             if let Some(entry) = get_entry(id, history) {
                 if let EntryKind::FilePath(paths) = entry.kind {
-                    let uris: Vec<String> = paths.lines()
+                    let uris: Vec<String> = paths
+                        .lines()
                         .map(|l| l.trim_end_matches('\r').to_string())
                         .filter(|l| !l.is_empty())
                         .collect();
@@ -210,16 +208,11 @@ fn on_action(
                         ];
 
                         // Build array of strings for dbus, using only the first file
-                        let array_arg = format!(
-                            "array:string:{}",
-                            uris[0]
-                        );
+                        let array_arg = format!("array:string:{}", uris[0]);
                         args.push(array_arg);
                         args.push("string:".to_string()); // StartupId
 
-                        let _ = std::process::Command::new("dbus-send")
-                            .args(args)
-                            .spawn();
+                        let _ = std::process::Command::new("dbus-send").args(args).spawn();
                     }
                     window.set_visible(false);
                 }
@@ -250,14 +243,11 @@ fn set_clipboard(
                         "x-special/gnome-copied-files",
                         &glib::Bytes::from(format!("copy\n{}", t).as_bytes()),
                     ),
-                    gdk::ContentProvider::for_bytes(
-                        "text/plain",
-                        &glib::Bytes::from(t.as_bytes()),
-                    ),
+                    gdk::ContentProvider::for_bytes("text/plain", &glib::Bytes::from(t.as_bytes())),
                 ]);
 
                 clipboard.set_content(Some(&provider)).unwrap();
-            },
+            }
             EntryKind::Image { .. } => {
                 let bytes = dbus.borrow().get_image_bytes(id).unwrap_or_default();
                 if bytes.is_empty() {

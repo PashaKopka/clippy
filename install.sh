@@ -13,7 +13,8 @@ echo "Setting up autostart for daemon..."
 
 mkdir -p ~/.config/autostart
 
-cat << 'DESK' > ~/.config/autostart/clippy-daemon.desktop
+# Autostart entry
+cat << DESK > ~/.config/autostart/clippy-daemon.desktop
 [Desktop Entry]
 Type=Application
 Name=Clippy Daemon
@@ -22,8 +23,8 @@ Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
 DESK
-echo "Installing UI desktop file and icon..."
-mkdir -p ~/.local/share/applications
+
+# UI desktop entry
 cat << DESK > ~/.local/share/applications/com.example.clippy.ui.desktop
 [Desktop Entry]
 Name=Clippy

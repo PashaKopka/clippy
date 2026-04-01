@@ -68,7 +68,6 @@
     letter-spacing: 0.05em;
 }
 
-/*TODO maybe change colors?*/
 .entry-badge-text   { background-color: alpha(@blue_3,   0.20); color: @blue_5;   }
 .entry-badge-image  { background-color: alpha(@green_3,  0.20); color: @green_5;  }
 .entry-badge-file   { background-color: alpha(@orange_3, 0.20); color: @orange_5; }
